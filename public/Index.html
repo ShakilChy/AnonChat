@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anonymous Chat</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+        }
+        body {
+            background-color: #f8f9fa;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .chat-box {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            max-width: 100%;
+            overflow: hidden;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        .chat-header {
+            background: #007bff;
+            color: white;
+            padding: 15px;
+            text-align: center;
+            font-size: 20px;
+            font-weight: bold;
+        }
+        .chat-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+            background: #f1f1f1;
+            max-height: calc(100vh - 150px); /* Subtract header and footer height */
+        }
+        .chat-message {
+            padding: 8px 12px;
+            border-radius: 20px;
+            display: inline-block;
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+        .sent {
+            background: #007bff;
+            color: white;
+            text-align: right;
+            margin-left: auto;
+        }
+        .received {
+            background: #e9ecef;
+            color: black;
+        }
+        .chat-footer {
+            padding: 15px;
+            background: white;
+            display: flex;
+            align-items: center;
+            border-top: 1px solid #ddd;
+        }
+        .chat-footer input {
+            flex: 1;
+            border-radius: 20px;
+            border: 1px solid #ddd;
+            padding: 8px;
+            outline: none;
+        }
+        .chat-footer button {
+            margin-left: 10px;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            background: url('https://img.icons8.com/ios/452/paper-plane.png') no-repeat center;
+            background-size: 20px;
+            border: none;
+            cursor: pointer;
+        }
+        .chat-footer input[type="file"] {
+            display: none;
+        }
+        .file-upload-btn {
+            font-size: 16px;
+            color: #007bff;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+<div class="chat-box">
+    <div class="chat-header">Anonymous Chat</div>
+    <div class="chat-body" id="chatBody"></div>
+    <div class="chat-footer">
+        <input type="text" id="messageInput" placeholder="Type a message..." class="form-control">
+        <input type="file" id="fileInput" class="ml-2">
+        <span class="file-upload-btn" onclick="document.getElementById('fileInput').click()">📎</span>
+        <button class="btn btn-primary" id="sendMessage"></button>
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script>
+    const socket = io();
+    let username = "Anonymous";
+
+    // Set random username
+    socket.on("set_username", (randomName) => {
+        username = randomName;
+        alert("Your anonymous name: " + username);
+    });
+
+    // Send message or file when Enter key is pressed
+    $("#messageInput").keypress((event) => {
+        if (event.which === 13) { // Enter key pressed
+            let message = $("#messageInput").val().trim();
+            let file = $("#fileInput")[0].files[0];
+
+            if (message) {
+                socket.emit("send_message", { username, message });
+                $("#messageInput").val("");
+            }
+
+            if (file) {
+                let reader = new FileReader();
+                reader.onload = function (e) {
+                    socket.emit("send_file", { username, fileName: file.name, fileURL: e.target.result, fileType: file.type });
+                };
+                reader.readAsDataURL(file);
+                $("#fileInput").val("");
+            }
+        }
+    });
+
+    // Send message or file when button is clicked
+    $("#sendMessage").click(() => {
+        let message = $("#messageInput").val().trim();
+        let file = $("#fileInput")[0].files[0];
+
+        if (message) {
+            socket.emit("send_message", { username, message });
+            $("#messageInput").val("");
+        }
+
+        if (file) {
+            let reader = new FileReader();
+            reader.onload = function (e) {
+                socket.emit("send_file", { username, fileName: file.name, fileURL: e.target.result, fileType: file.type });
+            };
+            reader.readAsDataURL(file);
+            $("#fileInput").val("");
+        }
+    });
+
+    // Receive text message
+    socket.on("receive_message", (data) => {
+        let align = data.username === username ? "justify-content-end" : "justify-content-start";
+        let bgClass = data.username === username ? "sent" : "received";
+        $("#chatBody").append(`<div class="d-flex ${align}"><div class="chat-message ${bgClass}"><strong>${data.username}:</strong> ${data.message}</div></div>`);
+        $("#chatBody").scrollTop($("#chatBody")[0].scrollHeight);
+    });
+
+    // Receive file (image or other file)
+    socket.on("receive_file", (data) => {
+        let align = data.username === username ? "justify-content-end" : "justify-content-start";
+        let bgClass = data.username === username ? "sent" : "received";
+        let fileHTML = "";
+
+        // Check if the file is an image
+        if (data.fileData.fileType.startsWith("image/")) {
+            fileHTML = `<img src="${data.fileData.fileURL}" class="img-fluid rounded" style="max-width: 200px;">`;
+        } else {
+            fileHTML = `<a href="${data.fileData.fileURL}" download="${data.fileData.fileName}" class="chat-message ${bgClass}"><strong>${data.username}:</strong> 📎 ${data.fileData.fileName}</a>`;
+        }
+
+        $("#chatBody").append(`<div class="d-flex ${align}"><div class="chat-message ${bgClass}"><strong>${data.username}:</strong><br>${fileHTML}</div></div>`);
+        $("#chatBody").scrollTop($("#chatBody")[0].scrollHeight);
+    });
+</script>
+
+</body>
+</html>
